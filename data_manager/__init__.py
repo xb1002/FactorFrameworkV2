@@ -1,3 +1,3 @@
-from interfaces import IDataSource
+from .interfaces import IDataSource
 
-from datasource import LoacalDatasource
+from .datasource import LoacalDatasource
