@@ -131,6 +131,11 @@ class EvaluatorEngine:
                 )
         return results
     
-    def list_evaluators(self) -> List[str]:
+    @staticmethod
+    def get_evaluator(name: str) -> IEvaluator:
+        return get_evaluator(name)
+    
+    @staticmethod
+    def list_evaluators() -> List[str]:
         """列出所有注册的评价器名称"""
         return [ev.name for ev in list_evaluators()]
