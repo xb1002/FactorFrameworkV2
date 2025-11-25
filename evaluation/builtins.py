@@ -20,6 +20,7 @@ class CommonFactorEvalResult(EvalResult):
     
     继承自 EvalResult，实现了针对通用因子评价的绘图功能
     """
+    horizon: int = 1  # 添加 horizon 字段
     
     def plot_artifacts(
         self,
@@ -29,7 +30,7 @@ class CommonFactorEvalResult(EvalResult):
         style: str = "default",
         save_path: str | None = None,
         # 子类特定参数
-        horizon: int = 1,
+        horizon: int | None = None,
         show_monthly_ic_labels: bool | None = None,
         figsize_rank_ic: tuple | None = None,
         figsize_rank_ic_dist: tuple | None = None,
@@ -58,6 +59,10 @@ class CommonFactorEvalResult(EvalResult):
 
         artifacts = self.artifacts
         factor_name = self.factor_name or "factor"
+        
+        # 使用存储的 horizon,如果没有传入的话
+        if horizon is None:
+            horizon = self.horizon
         
         # 应用matplotlib样式
         if style != "default":
@@ -293,6 +298,7 @@ class CommonFactorEvaluator(IEvaluator):
         q=10,
         top_pct=0.2,
         long_high=True,
+        horizon=1,
         **_,
     ) -> EvalResult:
         # ---------- 0) 对齐与清洗 ----------
@@ -302,6 +308,10 @@ class CommonFactorEvaluator(IEvaluator):
 
         factor = factor.loc[common_idx]
         ret = ret.loc[common_idx]
+        
+        # ✅ 收益摊销：将 horizon 期收益转换为日均收益
+        if horizon > 1:
+            ret = ret / horizon
 
         valid_mask = factor.notna() & ret.notna()
         if not valid_mask.all():
@@ -476,6 +486,7 @@ class CommonFactorEvaluator(IEvaluator):
             factor_name=f_name,
             metrics=metrics,
             artifacts=artifacts,
+            horizon=horizon,  # 传递 horizon 用于绘图
         )
 
     def _empty_result(self, factor_name, msg):

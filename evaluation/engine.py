@@ -120,6 +120,7 @@ class EvaluatorEngine:
         return self._evaluate_one(
             factor, ret,
             evaluator=evaluator,
+            horizon=horizon,  # 传递 horizon
             **override_params,
         )
     
@@ -160,6 +161,7 @@ class EvaluatorEngine:
             factor, ret,
             evaluators=evaluators,
             per_evaluator_params=per_evaluator_params,
+            horizon=horizon,  # 传递 horizon
             **override_params,
         )
     
