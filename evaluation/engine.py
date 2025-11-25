@@ -18,7 +18,7 @@ class EvaluatorEngine:
         tmp = pd.DataFrame({"factor": factor, "ret": ret})
         return tmp.dropna()
 
-    def evaluate_one(
+    def _evaluate_one(
         self,
         factor: pd.Series,
         ret: pd.Series,
@@ -46,7 +46,7 @@ class EvaluatorEngine:
 
         return res
 
-    def evaluate_all(
+    def _evaluate_all(
         self,
         factor: pd.Series,
         ret: pd.Series,
@@ -86,6 +86,84 @@ class EvaluatorEngine:
 
         return out
     
+    def evaluate_one(
+        self,
+        df: pd.DataFrame | pd.Series,  # 基础数据表，需包含价格列
+        factor: pd.Series,  # 单个因子值序列
+        horizon: int,
+        evaluator: EvaluatorLike,
+        price_col: str = "close",
+        kind: Literal["simple", "log"] = "simple",
+        **override_params: Any,
+    ) -> EvalResult:
+        """
+        单因子 + 单 evaluator 评价
+        Args:
+            df: 基础数据表，需包含价格列
+            factor: 单个因子值序列
+            horizon: 评价的收益率 horizon
+            price_col: 用于计算收益率的价格列名
+            kind: 收益率计算方式，simple 或 log
+            evaluator: 评价器实例或名称, 目前可选字符串有：'common_eval'
+            override_params: 覆盖评价器默认参数的参数
+        Returns:
+            EvalResult: 评价结果
+        """
+        # 确保 df 为 DataFrame
+        if isinstance(df, pd.Series):
+            df = df.to_frame(name=df.name or price_col)
+        
+        # 1) 生成 forward returns
+        ret_df = build_forward_returns(df, [horizon], price_col=price_col, kind=kind)
+        ret = ret_df[f"ret_fwd_{horizon}d"]
+        
+        return self._evaluate_one(
+            factor, ret,
+            evaluator=evaluator,
+            **override_params,
+        )
+    
+    def evaluate_all(
+        self,
+        df: pd.DataFrame | pd.Series,  # 基础数据表，需包含价格列
+        factor: pd.Series,  # 单个因子值序列
+        horizon: int,
+        evaluators: EvaluatorList = None,
+        price_col: str = "close",
+        kind: Literal["simple", "log"] = "simple",
+        per_evaluator_params: PerEvaluatorParams = None,
+        **override_params: Any,
+    ) -> Dict[str, EvalResult]:
+        """
+        单因子 + 多 evaluator
+        Args:
+            df: 基础数据表，需包含价格列
+            factor: 单个因子值序列
+            horizon: 评价的收益率 horizon
+            price_col: 用于计算收益率的价格列名
+            kind: 收益率计算方式，simple 或 log
+            evaluators: 评价器列表，若为 None 则使用所有注册的评价器
+            per_evaluator_params: 每个评价器的特定参数覆盖
+            override_params: 覆盖评价器默认参数的参数
+        Returns:
+            {evaluator_name: EvalResult}
+        """
+        # 确保 df 为 DataFrame
+        if isinstance(df, pd.Series):
+            df = df.to_frame(name=df.name or price_col)
+        
+        # 1) 生成 forward returns
+        ret_df = build_forward_returns(df, [horizon], price_col=price_col, kind=kind)
+
+        ret = ret_df[f"ret_fwd_{horizon}d"]
+        return self._evaluate_all(
+            factor, ret,
+            evaluators=evaluators,
+            per_evaluator_params=per_evaluator_params,
+            **override_params,
+        )
+
+    
     def evaluate_factors(
         self,
         df: pd.Series | pd.DataFrame,  # 基础数据表，需包含价格列
@@ -124,7 +202,7 @@ class EvaluatorEngine:
             results[fname] = {}
             for h in horizons:
                 r = ret_df[f"ret_fwd_{h}d"]
-                results[fname][h] = self.evaluate_all(
+                results[fname][h] = self._evaluate_all(
                     f, r,
                     evaluators=evaluators,
                     per_evaluator_params=per_evaluator_params,
