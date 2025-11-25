@@ -14,14 +14,20 @@ class LoacalDatasource(IDataSource):
     def load_data(self, start=None, end=None, fields=None, codes=None) -> pd.DataFrame:
         """从本地文件加载数据
         Args:
-            start (Optional[pd.Timestamp], optional): 开始时间. Defaults to None.
-            end (Optional[pd.Timestamp], optional): 结束时间. Defaults to None.
+            start (Optional[TimestampLike], optional): 开始时间. Defaults to None.
+            end (Optional[TimestampLike], optional): 结束时间. Defaults to None.
             fields (Optional[list[str]], optional): 需要加载的字段列表. Defaults to None.
             codes (Optional[list[str]], optional): 需要加载的标的列表. Defaults to None.
         Returns:
             pd.DataFrame: MultiIndex(date, code) 的基础数据
         """
         df = self._load_file()
+
+        # 先将start, end转为pd.Timestamp类型
+        if start is not None:
+            start = pd.Timestamp(start)
+        if end is not None:
+            end = pd.Timestamp(end)
 
         if start is not None:
             df = df[df.index.get_level_values('date') >= pd.Timestamp(start)]
