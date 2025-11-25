@@ -114,6 +114,24 @@ class FactorLibrary:
             factor=entry.spec,   # 传递 FactorSpec 对象
             **params,
         )
+    
+    def get_factor_spec(
+        self,
+        name: str,
+        version: Optional[str] = None,
+    ) -> Optional[FactorSpec]:
+        """
+        获取因子规格（FactorSpec）
+        - 先从 manual_store 查找
+        - 查不到再从 auto_store 查找
+        """
+        entry = (
+            self.manual_store.load_entry(name, version)
+            or self.auto_store.load_entry(name, version)
+        )
+        if entry is None:
+            return None
+        return entry.spec
 
     # 4) 对外接口：获取因子评价报告
     def get_factor_report(

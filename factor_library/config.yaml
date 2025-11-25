@@ -1,0 +1,21 @@
+# 因子库配置文件
+# Factor Library Configuration
+
+# 存储配置
+storage:
+  # 存储根目录
+  base_dir: "./factor_store"
+  
+  # 手动入库存储目录
+  manual_dir: "manual"
+  
+  # 自动入库存储目录
+  auto_dir: "auto"
+
+# 入库规则配置
+admission:
+  # 最小 Rank IC 均值阈值
+  min_rank_ic: 0.02
+  
+  # 最小 Rank IC IR 阈值
+  min_rank_ic_ir: 0.5
