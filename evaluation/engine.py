@@ -18,7 +18,7 @@ class EvaluatorEngine:
         tmp = pd.DataFrame({"factor": factor, "ret": ret})
         return tmp.dropna()
 
-    def _evaluate_one(
+    def _evaluate_one_horizon(
         self,
         factor: pd.Series,
         ret: pd.Series,
@@ -45,48 +45,8 @@ class EvaluatorEngine:
             res.factor_name = factor.name # type: ignore
 
         return res
-
-    def _evaluate_all(
-        self,
-        factor: pd.Series,
-        ret: pd.Series,
-        evaluators: EvaluatorList = None,
-        per_evaluator_params: PerEvaluatorParams = None,
-        **override_params: Any,
-    ) -> Dict[str, EvalResult]:
-        """评价单个因子，使用多个评价器
-        Args:
-            factor: 因子值序列
-            ret: 收益率序列
-            evaluators: 评价器列表，若为 None 则使用所有注册的评价器
-            per_evaluator_params: 每个评价器的特定参数覆盖
-            override_params: 所有评价器通用的参数覆盖
-        Returns:
-            Dict[str, EvalResult]: 评价结果字典，键为评价器名称
-        """
-        tmp = self.align(factor, ret)
-        evs = list(list_evaluators()) if evaluators is None else [
-            get_evaluator(e) if isinstance(e, str) else e for e in evaluators
-        ]
-
-        out: Dict[str, EvalResult] = {}
-        for ev in evs:
-            params = dict(ev.default_params)
-
-            if per_evaluator_params and ev.name in per_evaluator_params:
-                params.update(per_evaluator_params[ev.name])
-
-            params.update(override_params)
-
-            res = ev.evaluate(tmp["factor"], tmp["ret"], **params)
-            if res.factor_name is None:
-                res.factor_name = factor.name # type: ignore
-
-            out[ev.name] = res
-
-        return out
     
-    def evaluate_one(
+    def evaluate_one_horizon(
         self,
         df: pd.DataFrame | pd.Series,  # 基础数据表，需包含价格列
         factor: pd.Series,  # 单个因子值序列
@@ -117,53 +77,55 @@ class EvaluatorEngine:
         ret_df = build_forward_returns(df, [horizon], price_col=price_col, kind=kind)
         ret = ret_df[f"ret_fwd_{horizon}d"]
         
-        return self._evaluate_one(
+        return self._evaluate_one_horizon(
             factor, ret,
             evaluator=evaluator,
             horizon=horizon,  # 传递 horizon
             **override_params,
         )
     
-    def evaluate_all(
+    def evaluate_multi_horizons(
         self,
         df: pd.DataFrame | pd.Series,  # 基础数据表，需包含价格列
         factor: pd.Series,  # 单个因子值序列
-        horizon: int,
-        evaluators: EvaluatorList = None,
+        horizons: List[int],  # 多个 horizon
+        evaluator: EvaluatorLike,
         price_col: str = "close",
         kind: Literal["simple", "log"] = "simple",
-        per_evaluator_params: PerEvaluatorParams = None,
         **override_params: Any,
-    ) -> Dict[str, EvalResult]:
+    ) -> Dict[int, EvalResult]:
         """
-        单因子 + 多 evaluator
+        单因子 + 单 evaluator + 多 horizon
         Args:
             df: 基础数据表，需包含价格列
             factor: 单个因子值序列
-            horizon: 评价的收益率 horizon
+            horizons: 评价的收益率 horizon 列表，例如 [1, 5, 10]
+            evaluator: 评价器实例或名称, 目前可选字符串有：'common_eval'
             price_col: 用于计算收益率的价格列名
             kind: 收益率计算方式，simple 或 log
-            evaluators: 评价器列表，若为 None 则使用所有注册的评价器
-            per_evaluator_params: 每个评价器的特定参数覆盖
             override_params: 覆盖评价器默认参数的参数
         Returns:
-            {evaluator_name: EvalResult}
+            Dict[int, EvalResult]: {horizon: EvalResult}
         """
         # 确保 df 为 DataFrame
         if isinstance(df, pd.Series):
             df = df.to_frame(name=df.name or price_col)
         
-        # 1) 生成 forward returns
-        ret_df = build_forward_returns(df, [horizon], price_col=price_col, kind=kind)
+        # 1) 生成所有 horizon 的 forward returns
+        ret_df = build_forward_returns(df, horizons, price_col=price_col, kind=kind)
 
-        ret = ret_df[f"ret_fwd_{horizon}d"]
-        return self._evaluate_all(
-            factor, ret,
-            evaluators=evaluators,
-            per_evaluator_params=per_evaluator_params,
-            horizon=horizon,  # 传递 horizon
-            **override_params,
-        )
+        out: Dict[int, EvalResult] = {}
+        for horizon in horizons:
+            ret = ret_df[f"ret_fwd_{horizon}d"]
+            result = self._evaluate_one_horizon(
+                factor, ret,
+                evaluator=evaluator,
+                horizon=horizon,
+                **override_params,
+            )
+            out[horizon] = result
+        
+        return out
     
     @staticmethod
     def get_evaluator(name: str) -> IEvaluator:
