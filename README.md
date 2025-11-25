@@ -14,6 +14,7 @@
   - [数据管理器 (data_manager)](#数据管理器-data_manager)
   - [因子引擎 (factor_engine)](#因子引擎-factor_engine)
   - [评价引擎 (evaluation)](#评价引擎-evaluation)
+  - [因子库 (factor_library)](#因子库-factor_library)
 - [使用示例](#使用示例)
   - [加载数据](#加载数据)
   - [注册和计算因子](#注册和计算因子)
@@ -55,6 +56,16 @@ FactorFramework/
 │   ├── forward_return.py     # 未来收益计算
 │   ├── builtins.py           # 内置评价器
 │   └── engine.py             # 评价引擎
+├── factor_library/            # 因子库模块（新增）
+│   ├── __init__.py
+│   ├── interfaces.py         # 因子库接口定义
+│   ├── storage.py            # 因子存储实现
+│   ├── admission.py          # 入库规则
+│   ├── service.py            # 因子库服务
+│   ├── example.py            # 使用示例
+│   ├── test_factor_library.py # 单元测试
+│   ├── README.md             # 模块文档
+│   └── IMPLEMENTATION.md     # 实现总结
 ├── main.ipynb                 # 使用示例 Notebook
 └── README.md                  # 项目说明文档
 ```
@@ -294,6 +305,98 @@ report.plot_artifacts(
 4. **10 组累计收益图**：展示因子分组后的累计收益走势
 5. **Top-Bottom 累计收益图**：多空组合的累计收益
 6. **平均 10 组未来收益柱状图**：各分组的平均收益对比
+
+### 因子库 (factor_library)
+
+因子库模块提供因子的存储、管理、计算和评价的统一服务。
+
+#### 核心组件
+
+**FactorStore**：因子存储管理
+- 支持因子的持久化存储（JSON + pickle）
+- 提供因子的增删改查功能
+- 支持版本管理
+
+**AdmissionRule**：入库规则
+- 定义自动入库的阈值标准
+- 默认规则：`min_rank_ic >= 0.02`, `min_rank_ic_ir >= 0.4`
+- 支持自定义规则
+
+**FactorLibrary**：因子库服务
+- 手动入库（`manual_admit`）
+- 自动入库（`auto_admit_from_eval`）
+- 因子计算（`compute_factor`）
+- 因子评价（`get_factor_report`）
+
+#### 快速使用
+
+```python
+from pathlib import Path
+from factor_library import FactorLibrary, FactorStore, AdmissionRule
+from factor_engine import FactorEngine, FactorSpec
+from evaluation.engine import EvaluatorEngine
+
+# 1. 初始化因子库
+manual_store = FactorStore(Path("./factor_store/manual"), source_type="manual")
+auto_store = FactorStore(Path("./factor_store/auto"), source_type="auto")
+
+factor_lib = FactorLibrary(
+    manual_store=manual_store,
+    auto_store=auto_store,
+    factor_engine=FactorEngine(),
+    evaluator_engine=EvaluatorEngine(),
+    admission_rule=AdmissionRule(min_rank_ic=0.02, min_rank_ic_ir=0.5),
+)
+
+# 2. 手动入库因子
+@register_factor(name="momentum_5d", required_fields=["close"], version="v1")
+def momentum_5d(df):
+    return df.groupby(level=1)["close"].pct_change(5)
+
+spec = FactorSpec(
+    name="momentum_5d",
+    func=momentum_5d.__wrapped__,
+    required_fields=["close"],
+    version="v1"
+)
+
+factor_lib.manual_admit(
+    spec=spec,
+    description="5日动量因子",
+    tags=["momentum", "short_term"],
+)
+
+# 3. 从因子库计算因子
+factor = factor_lib.compute_factor(df, name="momentum_5d", version="v1")
+
+# 4. 获取因子评价报告
+reports = factor_lib.get_factor_report(
+    df=df,
+    name="momentum_5d",
+    horizons=[1, 5, 10],
+    evaluator_name="common_eval",
+)
+```
+
+#### 双存储体系
+
+因子库采用双存储设计：
+- **Manual Store**：手动入库的因子，不检查评价指标
+- **Auto Store**：自动入库的因子，需满足入库规则
+
+```
+factor_store/
+├── manual/          # 手动入库的因子
+│   └── {name}_{version}/
+│       ├── meta.json    # 元数据
+│       └── func.pkl     # 函数对象
+└── auto/            # 自动入库的因子
+    └── {name}_{version}/
+        ├── meta.json
+        └── func.pkl
+```
+
+详细文档请参考：[factor_library/README.md](factor_library/README.md)
 
 ## 💡 使用示例
 

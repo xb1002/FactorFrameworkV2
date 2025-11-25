@@ -111,7 +111,7 @@ class FactorLibrary:
         #   这里不自己调用 spec.func，避免重复逻辑
         return self.factor_engine.compute_one(
             df=df,
-            factor_name=entry.spec,   # 与 registry 中一致
+            factor=entry.spec,   # 传递 FactorSpec 对象
             **params,
         )
 
