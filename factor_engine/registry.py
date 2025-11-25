@@ -11,6 +11,7 @@ def register_factor(
     required_fields: Optional[List[str]] = None,
     params: Optional[Dict[str, Any]] = None,
     version: str = "v1",
+    force_update: bool = False, # 如果指定为True，则允许覆盖已存在的因子
 ):
     """
     装饰器：把函数注册为因子
@@ -23,7 +24,7 @@ def register_factor(
             params=params or {},
             version=version,
         )
-        if spec.name in _FACTOR_REGISTRY:
+        if spec.name in _FACTOR_REGISTRY and not force_update:
             raise KeyError(f"Factor '{spec.name}' already registered.")
         _FACTOR_REGISTRY[spec.name] = spec
         return func
