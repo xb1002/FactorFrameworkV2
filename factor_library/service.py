@@ -1,6 +1,6 @@
 # factor_library/service.py
 from pathlib import Path
-from typing import Dict, Iterable, Optional
+from typing import Dict, Iterable, Optional, List
 import pandas as pd
 
 from factor_engine.engine import FactorEngine
@@ -40,7 +40,7 @@ class FactorLibrary:
         self,
         spec: FactorSpec,
         description: str = "",
-        tags: Optional[list[str]] = None,
+        tags: Optional[List[str]] = None,
         eval_result: Optional[EvalResult] = None,
     ) -> None:
         """
@@ -61,7 +61,7 @@ class FactorLibrary:
         spec: FactorSpec,
         eval_result: EvalResult,
         description: str = "",
-        tags: Optional[list[str]] = None,
+        tags: Optional[List[str]] = None,
     ) -> bool:
         """
         自动入库：根据 admission_rule 和 EvalResult.metrics 决定是否入库。
@@ -132,6 +132,131 @@ class FactorLibrary:
         if entry is None:
             return None
         return entry.spec
+    
+    def get_factor_entry(
+        self,
+        name: str,
+        version: Optional[str] = None,
+    ) -> Optional[FactorEntry]:
+        """
+        获取因子条目（FactorEntry）
+        - 先从 manual_store 查找
+        - 查不到再从 auto_store 查找
+        """
+        entry = (
+            self.manual_store.load_entry(name, version)
+            or self.auto_store.load_entry(name, version)
+        )
+        return entry
+    
+    def list_all_factors(
+        self,
+        source_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> List[FactorEntry]:
+        """
+        列出所有因子
+        
+        Args:
+            source_type: 筛选来源类型，None 表示全部，'manual' 或 'auto'
+            tags: 筛选标签，None 表示全部，否则返回包含任一标签的因子
+            
+        Returns:
+            因子条目列表
+        """
+        entries = []
+        
+        # 从 manual_store 获取
+        if source_type is None or source_type == "manual":
+            entries.extend(self.manual_store.list_entries())
+        
+        # 从 auto_store 获取
+        if source_type is None or source_type == "auto":
+            entries.extend(self.auto_store.list_entries())
+        
+        # 按标签筛选
+        if tags is not None:
+            entries = [
+                entry for entry in entries
+                if any(tag in entry.tags for tag in tags)
+            ]
+        
+        return entries
+    
+    def list_factor_names(
+        self,
+        source_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> List[str]:
+        """
+        列出所有因子名称
+        
+        Args:
+            source_type: 筛选来源类型
+            tags: 筛选标签
+            
+        Returns:
+            因子名称列表（格式：name_version）
+        """
+        entries = self.list_all_factors(source_type=source_type, tags=tags)
+        return [f"{entry.spec.name}_{entry.spec.version}" for entry in entries]
+    
+    def search_factors(
+        self,
+        keyword: Optional[str] = None,
+        source_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> List[FactorEntry]:
+        """
+        搜索因子
+        
+        Args:
+            keyword: 搜索关键词（匹配名称或描述）
+            source_type: 筛选来源类型
+            tags: 筛选标签
+            
+        Returns:
+            符合条件的因子条目列表
+        """
+        entries = self.list_all_factors(source_type=source_type, tags=tags)
+        
+        # 按关键词筛选
+        if keyword is not None:
+            keyword_lower = keyword.lower()
+            entries = [
+                entry for entry in entries
+                if keyword_lower in entry.spec.name.lower()
+                or keyword_lower in entry.description.lower()
+            ]
+        
+        return entries
+    
+    def get_factor_count(self, source_type: Optional[str] = None) -> Dict[str, int]:
+        """
+        获取因子数量统计
+        
+        Args:
+            source_type: 筛选来源类型，None 表示统计所有
+            
+        Returns:
+            统计字典，如 {"manual": 10, "auto": 5, "total": 15}
+        """
+        if source_type is None:
+            manual_count = len(self.manual_store.list_entries())
+            auto_count = len(self.auto_store.list_entries())
+            return {
+                "manual": manual_count,
+                "auto": auto_count,
+                "total": manual_count + auto_count,
+            }
+        elif source_type == "manual":
+            count = len(self.manual_store.list_entries())
+            return {"manual": count}
+        elif source_type == "auto":
+            count = len(self.auto_store.list_entries())
+            return {"auto": count}
+        else:
+            raise ValueError(f"Invalid source_type: {source_type}")
 
     # 4) 对外接口：获取因子评价报告
     def get_factor_report(
