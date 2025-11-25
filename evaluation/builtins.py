@@ -1,6 +1,7 @@
 # evaluation/builtins.py
 from __future__ import annotations
 
+import os
 import pandas as pd
 import numpy as np
 import scipy.stats as st
@@ -54,8 +55,7 @@ class CommonFactorEvalResult(EvalResult):
         Returns:
             Dict[str, plt.Figure]: 包含所有图表的字典
         """
-        import os
-        
+
         artifacts = self.artifacts
         factor_name = self.factor_name or "factor"
         
@@ -66,11 +66,11 @@ class CommonFactorEvalResult(EvalResult):
         # 设置默认尺寸
         default_figsize = figsize or (12, 4)
         figsize_rank_ic = figsize_rank_ic or default_figsize
-        figsize_rank_ic_dist = figsize_rank_ic_dist or (10, 4)
-        figsize_rank_ic_monthly = figsize_rank_ic_monthly or (14, 5)
+        figsize_rank_ic_dist = figsize_rank_ic_dist or (12, 4)
+        figsize_rank_ic_monthly = figsize_rank_ic_monthly or (12, 5)
         figsize_group_cumret = figsize_group_cumret or (12, 6)
         figsize_ls_cumret = figsize_ls_cumret or default_figsize
-        figsize_mean_group_ret = figsize_mean_group_ret or (10, 5)
+        figsize_mean_group_ret = figsize_mean_group_ret or (12, 5)
         
         figures = {}
         
