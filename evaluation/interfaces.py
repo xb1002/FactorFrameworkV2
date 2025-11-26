@@ -31,6 +31,9 @@ class EvalResult:
     artifacts: Dict[str, Any] = field(default_factory=dict)
     notes: Dict[str, Any] = field(default_factory=dict)
 
+    # 添加 horizon 字段
+    horizon: int = 1
+
     def plot_artifacts(
         self,
         show_fig: bool = False,
