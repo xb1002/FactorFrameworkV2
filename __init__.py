@@ -1,2 +1,2 @@
-from app import get_factor_library
-factor_library = get_factor_library()
+from .app import get_factor_library
+factor_lib = get_factor_library()
