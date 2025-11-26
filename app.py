@@ -84,9 +84,22 @@ class AppConfig:
         
         # 解析存储配置
         storage_config = config.get("storage", {})
-        base_dir = Path(storage_config.get("base_dir", "./factor_store"))
+        base_dir_str = storage_config.get("base_dir", "./factor_store")
+        is_absolute = storage_config.get("is_absolute", True)
         manual_dir = storage_config.get("manual_dir", "manual")
         auto_dir = storage_config.get("auto_dir", "auto")
+        
+        # 处理路径：is_absolute=True 表示相对于项目根目录
+        if is_absolute:
+            # 相对于配置文件所在目录（项目根目录）
+            if config_path is None:
+                config_dir = Path(__file__).parent
+            else:
+                config_dir = Path(config_path).parent.resolve()
+            base_dir = config_dir / base_dir_str
+        else:
+            # 相对于当前工作目录
+            base_dir = Path(base_dir_str).resolve()
         
         # 创建存储实例
         manual_store = FactorStore(

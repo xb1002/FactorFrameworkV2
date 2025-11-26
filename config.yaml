@@ -5,6 +5,9 @@
 storage:
   # 存储根目录
   base_dir: "./factor_store"
+  # 是否是绝对路径，如果是绝对路径，那么就是该项目下的base_dir，
+  # 否则是相对于当前工作目录的路径
+  is_absolute: true
   
   # 手动入库存储目录
   manual_dir: "manual"
