@@ -8,25 +8,18 @@
 - FactorEntry: 因子库条目数据类
 - AdmissionRule: 自动入库规则类
 
-全局实例：
-- get_factor_library(): 获取因子库单例实例
-- get_config(): 获取配置信息
+注意：实例化和配置管理请使用项目根目录的 app.py
 """
 
 from .interfaces import FactorEntry, SourceType
 from .storage import FactorStore
 from .admission import AdmissionRule
 from .service import FactorLibrary
-from .instance import get_factor_library, get_config
 
 __all__ = [
-    # 核心类
     "FactorEntry",
     "SourceType",
     "FactorStore",
     "AdmissionRule",
     "FactorLibrary",
-    # 全局实例管理
-    "get_factor_library",
-    "get_config",
 ]

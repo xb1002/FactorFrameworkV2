@@ -3,7 +3,7 @@ import factors.manual  # noqa: F401
 
 from factor_engine import list_factors
 
-from factor_library import get_factor_library
+from app import get_factor_library
 factor_lib = get_factor_library()
 
 # 批量注册因子

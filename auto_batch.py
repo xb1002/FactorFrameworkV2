@@ -22,7 +22,7 @@ from data_manager import LoacalDatasource
 from factor_engine import list_factors, FactorEngine, FactorSpec
 from evaluation.engine import EvaluatorEngine
 from evaluation.interfaces import EvalResult
-from factor_library import get_factor_library, get_config
+from app import get_factor_library, get_config
 
 
 class AutoFactorProcessor:
