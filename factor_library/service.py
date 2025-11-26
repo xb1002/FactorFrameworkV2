@@ -72,7 +72,8 @@ class FactorLibrary:
             return False
         
         metrics = eval_result.metrics
-        if not self.admission_rule.is_pass(metrics):
+        horizon = eval_result.horizon  # 从 EvalResult 获取 horizon
+        if not self.admission_rule.is_pass(metrics, horizon):
             return False
         
         entry = FactorEntry(

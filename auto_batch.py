@@ -70,7 +70,8 @@ class AutoFactorProcessor:
         self.admission_rule = self.factor_lib.admission_rule
         
         print(f"✓ 因子库初始化完成")
-        print(f"  - 入库规则: IC >= {self.admission_rule.min_rank_ic}, IR >= {self.admission_rule.min_rank_ic_ir}")
+        print(f"  - 入库规则: |IC| >= {self.admission_rule.min_rank_ic}, |IR| >= {self.admission_rule.min_rank_ic_ir}, "
+              f"换手率/周期 <= {self.admission_rule.max_top_turnover_20_mean}, |单调性| >= {self.admission_rule.min_monotonic_mean}")
         print(f"  - 评价周期: {self.horizons}")
     
     def get_auto_factors(self) -> List[FactorSpec]:
@@ -165,10 +166,15 @@ class AutoFactorProcessor:
             rank_ic = metrics.get("rank_ic_mean", 0.0)
             rank_ic_ir = metrics.get("rank_ic_ir", 0.0)
             
-            # 判断是否通过入库规则（传递 metrics 字典）
-            is_pass = self.admission_rule.is_pass(metrics)
+            # 判断是否通过入库规则（传递 metrics 字典和 horizon）
+            is_pass = self.admission_rule.is_pass(metrics, horizon)
             
-            print(f"        - {horizon:>2}日: Rank IC={rank_ic:>7.4f}, IR={rank_ic_ir:>6.4f}  {'✓ 通过' if is_pass else '✗ 未通过'}")
+            # print(f"        - {horizon:>2}日: Rank IC={rank_ic:>7.4f}, IR={rank_ic_ir:>6.4f}  {'✓ 通过' if is_pass else '✗ 未通过'}")
+            # Rank IC 和 IR，换手率，单调性等指标综合判断
+            print(f"        - {horizon:>2}日: Rank IC={rank_ic:>7.4f}, IR={rank_ic_ir:>6.4f}, "
+                  f"换手率/周期={metrics.get('top_turnover_20_mean', 0.0)/horizon:>7.4f}, "
+                  f"|单调性|={metrics.get('monotonic_mean', 0.0):>7.4f}  "
+                  f"{'✓ 通过' if is_pass else '✗ 未通过'}")
             
             # 找到第一个通过的周期就使用它
             if is_pass:
