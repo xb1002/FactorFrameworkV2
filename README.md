@@ -46,13 +46,75 @@
 
 ## 🚀 快速开始
 
-### 1. 安装依赖
+### 1. 安装框架
+
+#### 在框架内使用
+
+如果只在框架目录内运行脚本，无需安装：
+
+```bash
+cd D:\Codes\python-project\FactorFramework
+python auto_batch.py  # 直接运行
+```
+
+#### 在其他项目中使用
+
+如果要在其他项目中使用框架，需要安装：
+
+```bash
+# 1. 进入框架目录
+cd D:\Codes\python-project\FactorFramework
+
+# 2. 使用开发模式安装（推荐）
+pip install -e .
+```
+
+**配置 VSCode 代码提示**（可选）：
+
+在你的项目中创建或编辑 `.vscode/settings.json`：
+
+```json
+{
+  "python.analysis.extraPaths": [
+    "D:/Codes/python-project/FactorFramework"
+  ],
+  "python.analysis.autoImportCompletions": true
+}
+```
+
+然后重启 Python 语言服务器：
+- 按 `Ctrl+Shift+P`
+- 输入 `Python: Restart Language Server`
+- 回车
+
+**在外部项目中导入使用**：
+
+```python
+import FactorFramework
+
+# 获取因子库
+lib = FactorFramework.get_factor_library()
+```
+
+或者：
+
+```python
+from FactorFramework import (
+    get_factor_library,
+    register_factor,
+    FactorEngine,
+    LoacalDatasource,
+    EvaluatorEngine,
+)
+```
+
+### 2. 安装依赖
 
 ```bash
 pip install pandas numpy scipy matplotlib pyyaml ipywidgets
 ```
 
-### 2. 准备数据
+### 3. 准备数据
 
 将行情数据放入 `data/` 目录，数据格式要求：
 - **索引**：MultiIndex(date, code)
@@ -66,7 +128,7 @@ date       code
            000002.SZ   50.0   51.0    49.5    50.5   500000.0  2.53e+07
 ```
 
-### 3. 配置因子库
+### 4. 配置因子库
 
 编辑 `config.yaml` 配置文件：
 
@@ -74,6 +136,8 @@ date       code
 # 存储配置
 storage:
   base_dir: "./factor_store"
+  # 路径类型：true=相对于项目根目录，false=相对于当前工作目录
+  is_absolute: true
   manual_dir: "manual"
   auto_dir: "auto"
 
@@ -85,7 +149,11 @@ admission:
   min_monotonic_mean: 0.1        # 最小收益单调性
 ```
 
-### 4. 开始挖因子
+**路径配置说明**：
+- `is_absolute: true`（推荐）：`base_dir` 相对于项目根目录，无论从哪里调用，因子库位置固定
+- `is_absolute: false`：`base_dir` 相对于当前工作目录
+
+### 5. 开始挖因子
 
 打开 `analysis.ipynb` 开始交互式因子挖掘，或使用 `auto_batch.py` 进行批量处理。
 
@@ -779,6 +847,51 @@ factor.to_csv("factor_momentum_5d.csv")
 
 # 导出为 Parquet
 factor.to_frame(name="factor_value").to_parquet("factor_momentum_5d.parquet")
+```
+
+### Q5：在外部项目使用框架
+
+**步骤 1：安装框架**
+
+```bash
+cd D:\Codes\python-project\FactorFramework
+pip install -e .
+```
+
+**步骤 2：配置 VSCode**
+
+在你的项目中创建 `.vscode/settings.json`：
+
+```json
+{
+  "python.analysis.extraPaths": [
+    "D:/Codes/python-project/FactorFramework"
+  ],
+  "python.analysis.autoImportCompletions": true
+}
+```
+
+**步骤 3：重启语言服务器**
+
+- 按 `Ctrl+Shift+P`
+- 输入 `Python: Restart Language Server`
+
+**步骤 4：使用框架**
+
+```python
+# 在你的项目代码中
+import FactorFramework
+
+# 获取因子库
+lib = FactorFramework.get_factor_library()
+
+# 或导入具体模块
+from FactorFramework import (
+    get_factor_library,
+    register_factor,
+    FactorEngine,
+    LoacalDatasource,
+)
 ```
 
 ---
