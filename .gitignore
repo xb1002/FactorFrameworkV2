@@ -6,3 +6,4 @@ data/
 .vscode/
 factor_store/
 *.egg-info/
+factor_hash_records.json

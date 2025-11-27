@@ -10,8 +10,11 @@
 """
 
 import sys
+import json
+import hashlib
+import argparse
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 import pandas as pd
 from datetime import datetime
 
@@ -34,6 +37,9 @@ class AutoFactorProcessor:
         start_date: str = "2020-01-01",
         end_date: str = "2026-01-01",
         horizons: Optional[List[int]] = None,
+        hash_record_path: str = "./factor_hash_records.json",
+        force_reprocess: bool = False,
+        factor_names: Optional[List[str]] = None,
     ):
         """
         初始化处理器
@@ -43,11 +49,21 @@ class AutoFactorProcessor:
             start_date: 开始日期
             end_date: 结束日期
             horizons: 评价周期列表
+            hash_record_path: hash 记录文件路径
+            force_reprocess: 是否强制重新处理所有因子
+            factor_names: 指定处理的因子名称列表，None 表示处理所有因子
         """
         self.data_path = data_path
         self.start_date = start_date
         self.end_date = end_date
         self.horizons = horizons or [1, 5, 10, 20]
+        self.hash_record_path = Path(hash_record_path)
+        self.force_reprocess = force_reprocess
+        self.factor_names = set(factor_names) if factor_names else None
+        
+        # Hash 记录管理
+        self.hash_records: Dict[str, str] = self._load_hash_records()
+        self.updated_records: Dict[str, str] = {}
         
         # 初始化组件
         print("=" * 80)
@@ -73,6 +89,92 @@ class AutoFactorProcessor:
         print(f"  - 入库规则: |IC| >= {self.admission_rule.min_rank_ic}, |IR| >= {self.admission_rule.min_rank_ic_ir}, "
               f"换手率/周期 <= {self.admission_rule.max_top_turnover_20_mean}, |单调性| >= {self.admission_rule.min_monotonic_mean}")
         print(f"  - 评价周期: {self.horizons}")
+        print(f"  - Hash 记录: {len(self.hash_records)} 个已处理因子")
+        print(f"  - 强制重新处理: {'是' if self.force_reprocess else '否'}")
+        if self.factor_names:
+            print(f"  - 指定因子: {len(self.factor_names)} 个")
+        print(f"  - Hash 记录: {len(self.hash_records)} 个已处理因子")
+        print(f"  - 强制重新处理: {'是' if self.force_reprocess else '否'}")
+        if self.factor_names:
+            print(f"  - 指定因子: {len(self.factor_names)} 个")
+    
+    @staticmethod
+    def _compute_factor_hash(factor_spec: FactorSpec) -> str:
+        """
+        计算因子规格的 hash 值
+        
+        Args:
+            factor_spec: 因子规格
+            
+        Returns:
+            Hash 字符串
+        """
+        # 构造用于计算 hash 的字符串，包含因子的关键属性
+        hash_content = f"{factor_spec.name}|{factor_spec.version}|{factor_spec.func.__code__.co_code}"
+        return hashlib.md5(hash_content.encode()).hexdigest()
+    
+    def _load_hash_records(self) -> Dict[str, str]:
+        """
+        加载 hash 记录文件
+        
+        Returns:
+            Hash 记录字典 {factor_name: hash_value}
+        """
+        if not self.hash_record_path.exists():
+            return {}
+        
+        try:
+            with open(self.hash_record_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"警告: 无法加载 hash 记录文件 ({e})，将使用空记录")
+            return {}
+    
+    def _save_hash_records(self):
+        """
+        保存 hash 记录到文件
+        """
+        try:
+            # 确保目录存在
+            self.hash_record_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # 合并旧记录和新记录
+            all_records = {**self.hash_records, **self.updated_records}
+            
+            with open(self.hash_record_path, 'w', encoding='utf-8') as f:
+                json.dump(all_records, f, indent=2, ensure_ascii=False)
+            
+            print(f"\n✓ Hash 记录已保存到: {self.hash_record_path}")
+        except Exception as e:
+            print(f"\n警告: 无法保存 hash 记录文件 ({e})")
+    
+    def _should_process_factor(self, factor_spec: FactorSpec) -> tuple:
+        """
+        判断是否需要处理该因子
+        
+        Args:
+            factor_spec: 因子规格
+            
+        Returns:
+            (是否需要处理, 原因说明)
+        """
+        # 如果强制重新处理，直接返回 True
+        if self.force_reprocess:
+            return True, "强制重新处理"
+        
+        # 计算当前 hash 值
+        current_hash = self._compute_factor_hash(factor_spec)
+        
+        # 检查是否有历史记录
+        if factor_spec.name not in self.hash_records:
+            return True, "首次处理"
+        
+        # 对比 hash 值
+        old_hash = self.hash_records[factor_spec.name]
+        if old_hash != current_hash:
+            return True, f"代码已变更 (旧: {old_hash[:8]}..., 新: {current_hash[:8]}...)"
+        
+        return False, f"代码未变更 (hash: {current_hash[:8]}...)"
     
     def get_auto_factors(self) -> List[FactorSpec]:
         """
@@ -91,8 +193,14 @@ class AutoFactorProcessor:
         # 筛选未入库的因子
         auto_factors = [f for f in all_factors if f.name not in existing_names]
         
+        # 如果指定了因子列表，进一步筛选
+        if self.factor_names:
+            auto_factors = [f for f in auto_factors if f.name in self.factor_names]
+        
         print(f"\n找到 {len(all_factors)} 个已注册因子")
         print(f"  - 已入库: {len(existing_names)} 个")
+        if self.factor_names:
+            print(f"  - 指定处理: {len(self.factor_names)} 个")
         print(f"  - 待处理: {len(auto_factors)} 个")
         
         return auto_factors
@@ -238,11 +346,24 @@ class AutoFactorProcessor:
         
         results = {}
         success_count = 0
+        skipped_count = 0
         
         for i, factor_spec in enumerate(auto_factors, 1):
             print(f"\n\n{'#' * 80}")
             print(f"# 进度: {i}/{len(auto_factors)}")
             print(f"{'#' * 80}")
+            
+            # 检查是否需要处理
+            should_process, reason = self._should_process_factor(factor_spec)
+            
+            if not should_process:
+                print(f"\n跳过因子: {factor_spec.name} ({factor_spec.version})")
+                print(f"  原因: {reason}")
+                results[factor_spec.name] = None  # None 表示跳过
+                skipped_count += 1
+                continue
+            
+            print(f"\n处理原因: {reason}")
             
             # 评价因子
             reports = self.evaluate_factor(factor_spec)
@@ -255,18 +376,28 @@ class AutoFactorProcessor:
                 success = self.try_auto_admit(factor_spec, reports)
                 results[factor_spec.name] = success
                 
+                # 更新 hash 记录（无论是否入库成功，都记录已处理）
+                current_hash = self._compute_factor_hash(factor_spec)
+                self.updated_records[factor_spec.name] = current_hash
+                
                 if success:
                     success_count += 1
             else:
                 results[factor_spec.name] = False
         
+        # 保存 hash 记录
+        if self.updated_records:
+            self._save_hash_records()
+        
         # 打印最终统计
         print(f"\n\n{'=' * 80}")
         print(f"处理完成")
         print(f"{'=' * 80}")
-        print(f"  - 总共处理: {len(auto_factors)} 个因子")
+        print(f"  - 总共待处理: {len(auto_factors)} 个因子")
+        print(f"  - 跳过未变更: {skipped_count} 个")
+        print(f"  - 实际处理: {len(auto_factors) - skipped_count} 个")
         print(f"  - 成功入库: {success_count} 个")
-        print(f"  - 未通过: {len(auto_factors) - success_count} 个")
+        print(f"  - 未通过: {len(auto_factors) - skipped_count - success_count} 个")
         
         # 显示因子库统计
         stats = self.factor_lib.get_factor_count()
@@ -278,8 +409,91 @@ class AutoFactorProcessor:
         return results
 
 
+def parse_arguments():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(
+        description="自动因子入库脚本",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  # 处理所有因子（使用默认参数）
+  python auto_batch.py
+  
+  # 强制重新处理所有因子
+  python auto_batch.py --force
+  
+  # 只处理指定的因子
+  python auto_batch.py --factors momentum_5d_v1 momentum_10d_v1
+  
+  # 指定时间范围
+  python auto_batch.py --start-date 2022-01-01 --end-date 2024-01-01
+  
+  # 指定评价周期
+  python auto_batch.py --horizons 5 10 20
+  
+  # 指定 hash 记录文件路径
+  python auto_batch.py --hash-record ./my_hash_records.json
+        """
+    )
+    
+    parser.add_argument(
+        "--data-path",
+        type=str,
+        default="./data/daily_price.parquet",
+        help="数据文件路径 (默认: ./data/daily_price.parquet)"
+    )
+    
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        default="2020-01-01",
+        help="开始日期 (默认: 2020-01-01)"
+    )
+    
+    parser.add_argument(
+        "--end-date",
+        type=str,
+        default="2026-01-01",
+        help="结束日期 (默认: 2026-01-01)"
+    )
+    
+    parser.add_argument(
+        "--horizons",
+        type=int,
+        nargs="+",
+        default=[1, 5, 10, 20],
+        help="评价周期列表 (默认: 1 5 10 20)"
+    )
+    
+    parser.add_argument(
+        "--hash-record",
+        type=str,
+        default="./factor_hash_records.json",
+        help="hash 记录文件路径 (默认: ./factor_hash_records.json)"
+    )
+    
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="强制重新处理所有因子（忽略 hash 记录）"
+    )
+    
+    parser.add_argument(
+        "--factors",
+        type=str,
+        nargs="+",
+        default=None,
+        help="指定要处理的因子名称列表（默认处理所有因子）"
+    )
+    
+    return parser.parse_args()
+
+
 def main():
     """主函数"""
+    # 解析命令行参数
+    args = parse_arguments()
+    
     print("\n" + "=" * 80)
     print("自动因子入库脚本")
     print(f"运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -288,10 +502,13 @@ def main():
     try:
         # 创建处理器
         processor = AutoFactorProcessor(
-            data_path="./data/daily_price.parquet",
-            start_date="2020-01-01",
-            end_date="2026-01-01",
-            horizons=[1, 5, 10, 20]
+            data_path=args.data_path,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            horizons=args.horizons,
+            hash_record_path=args.hash_record,
+            force_reprocess=args.force,
+            factor_names=args.factors,
         )
         
         # 处理所有因子
