@@ -63,7 +63,6 @@ class AutoFactorProcessor:
         
         # Hash 记录管理
         self.hash_records: Dict[str, str] = self._load_hash_records()
-        self.updated_records: Dict[str, str] = {}
         
         # 初始化组件
         print("=" * 80)
@@ -138,15 +137,10 @@ class AutoFactorProcessor:
             # 确保目录存在
             self.hash_record_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # 合并旧记录和新记录
-            all_records = {**self.hash_records, **self.updated_records}
-            
             with open(self.hash_record_path, 'w', encoding='utf-8') as f:
-                json.dump(all_records, f, indent=2, ensure_ascii=False)
-            
-            print(f"\n✓ Hash 记录已保存到: {self.hash_record_path}")
+                json.dump(self.hash_records, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"\n警告: 无法保存 hash 记录文件 ({e})")
+            print(f"        ⚠ 警告: 无法保存 hash 记录 ({e})")
     
     def _should_process_factor(self, factor_spec: FactorSpec) -> tuple:
         """
@@ -378,16 +372,16 @@ class AutoFactorProcessor:
                 
                 # 更新 hash 记录（无论是否入库成功，都记录已处理）
                 current_hash = self._compute_factor_hash(factor_spec)
-                self.updated_records[factor_spec.name] = current_hash
+                self.hash_records[factor_spec.name] = current_hash
+                
+                # 立即保存 hash 记录
+                self._save_hash_records()
+                print(f"        ✓ Hash 已更新: {current_hash[:16]}...")
                 
                 if success:
                     success_count += 1
             else:
                 results[factor_spec.name] = False
-        
-        # 保存 hash 记录
-        if self.updated_records:
-            self._save_hash_records()
         
         # 打印最终统计
         print(f"\n\n{'=' * 80}")
