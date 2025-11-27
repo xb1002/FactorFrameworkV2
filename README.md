@@ -748,7 +748,7 @@ FactorFramework/
 ### 必需依赖
 
 ```bash
-pip install pandas numpy scipy matplotlib pyyaml
+pip install pandas numpy scipy matplotlib pyyaml numba
 ```
 
 ### 可选依赖
@@ -764,8 +764,32 @@ pip install pyarrow fastparquet
 ### 完整安装
 
 ```bash
-pip install pandas numpy scipy matplotlib pyyaml ipywidgets jupyter pyarrow
+pip install pandas numpy scipy matplotlib pyyaml numba ipywidgets jupyter pyarrow
 ```
+
+### ⚡ 性能优化
+
+框架使用 **Numba JIT 编译**加速因子评价过程：
+
+- ✅ **Rank IC 计算**：并行计算每日 Rank IC
+- ✅ **分组收益计算**：并行计算分组收益率
+- ✅ **性能提升**：3-10 倍加速（取决于数据规模）
+
+**安装 Numba**（强烈推荐）：
+
+```bash
+pip install numba
+```
+
+**性能测试**：
+
+```bash
+python test_numba_performance.py
+```
+
+如果 numba 安装失败，代码会自动回退到 pandas 原生方法，不影响功能。
+
+详细说明请参考：[docs/NUMBA_OPTIMIZATION.md](docs/NUMBA_OPTIMIZATION.md)
 
 ---
 

@@ -12,6 +12,18 @@ from dataclasses import dataclass, field
 from .interfaces import IEvaluator, EvalResult
 from .registry import add_evaluator
 
+# 尝试导入 numba 优化函数，如果失败则使用普通版本
+try:
+    from .numba_accelerator import (
+        compute_rank_ic_by_date,
+        compute_group_return_by_date,
+        compute_spearman_correlation
+    )
+    USE_NUMBA = True
+except ImportError:
+    USE_NUMBA = False
+    # 如果 numba 不可用，将在运行时使用 pandas 原生方法
+
 
 @dataclass
 class CommonFactorEvalResult(EvalResult):
@@ -326,16 +338,48 @@ class CommonFactorEvaluator(IEvaluator):
         ).sort_index()
 
         # ---------- 1) IC / Rank IC ----------
-        def calc_ics(g):
-            if len(g) < 2 or g["factor"].std() == 0 or g["ret"].std() == 0:
-                return pd.Series({"ic": np.nan, "rank_ic": np.nan})
-            ic = g["factor"].corr(g["ret"])
-            rank_ic = g["factor"].corr(g["ret"], method="spearman")
-            return pd.Series({"ic": ic, "rank_ic": rank_ic})
+        if USE_NUMBA:
+            # 使用 numba 优化版本
+            dates = tmp.index.get_level_values(0)
+            date_categories = pd.Categorical(dates)
+            date_indices = date_categories.codes
+            n_dates = len(date_categories.categories)
+            
+            factor_values = tmp["factor"].values
+            return_values = tmp["ret"].values
+            
+            rank_ic_array = compute_rank_ic_by_date(
+                factor_values=factor_values,
+                returns=return_values,
+                date_indices=date_indices,
+                n_dates=n_dates
+            )
+            
+            rank_ic_series = pd.Series(
+                rank_ic_array,
+                index=date_categories.categories,
+                name='rank_ic'
+            ).dropna()
+            
+            # IC (Pearson) 仍使用 pandas（速度已经够快）
+            def calc_ic(g):
+                if len(g) < 2 or g["factor"].std() == 0 or g["ret"].std() == 0:
+                    return np.nan
+                return g["factor"].corr(g["ret"])
+            
+            ic_series = tmp.groupby(level="date").apply(calc_ic).dropna()
+        else:
+            # 使用原始 pandas 版本
+            def calc_ics(g):
+                if len(g) < 2 or g["factor"].std() == 0 or g["ret"].std() == 0:
+                    return pd.Series({"ic": np.nan, "rank_ic": np.nan})
+                ic = g["factor"].corr(g["ret"])
+                rank_ic = g["factor"].corr(g["ret"], method="spearman")
+                return pd.Series({"ic": ic, "rank_ic": rank_ic})
 
-        ic_df = tmp.groupby(level="date").apply(calc_ics)
-        ic_series = ic_df["ic"].dropna()
-        rank_ic_series = ic_df["rank_ic"].dropna()
+            ic_df = tmp.groupby(level="date").apply(calc_ics)
+            ic_series = ic_df["ic"].dropna()
+            rank_ic_series = ic_df["rank_ic"].dropna()
 
         def calc_stats(series: pd.Series):
             if len(series) < 2:
@@ -355,29 +399,55 @@ class CommonFactorEvaluator(IEvaluator):
         fac_for_group = factor if long_high else -factor
         tmp_group = pd.DataFrame({"factor": fac_for_group, "ret": ret}).sort_index()
 
-        def get_group_ret(g, q_bins):
-            if len(g) < q_bins:
-                return pd.Series(dtype=float)
-            try:
-                labels = pd.qcut(g["factor"], q_bins, labels=False, duplicates="drop")
-            except ValueError:
-                return pd.Series(dtype=float)
-            return g["ret"].groupby(labels).mean()
-
-        # 结果：可能是 DataFrame(date x group)，也可能是 Series(date, group)
-        group_ret_stack = tmp_group.groupby(level="date").apply(lambda g: get_group_ret(g, q))
-
-        # ✅ 如果 apply 得到的是 Series（少见），才需要 unstack
-        if isinstance(group_ret_stack, pd.Series):
-            group_ret_by_day = group_ret_stack.unstack(level=-1).sort_index()
+        if USE_NUMBA and len(tmp_group) > 1000:  # 只有数据量大时才用 numba
+            # 使用 numba 优化版本
+            dates = tmp_group.index.get_level_values(0)
+            date_categories = pd.Categorical(dates)
+            date_indices = date_categories.codes
+            n_dates = len(date_categories.categories)
+            
+            factor_values = tmp_group["factor"].values.astype(np.float64)
+            return_values = tmp_group["ret"].values.astype(np.float64)
+            
+            group_returns = compute_group_return_by_date(
+                factor_values=factor_values,
+                returns=return_values,
+                date_indices=date_indices,
+                n_dates=n_dates,
+                n_quantiles=q
+            )
+            
+            group_ret_by_day = pd.DataFrame(
+                group_returns,
+                index=date_categories.categories,
+                columns=list(range(q))
+            )
         else:
-            # ✅ 常见情况：已经是 DataFrame
-            group_ret_by_day = group_ret_stack.sort_index()
-        
-        if not group_ret_by_day.empty:
-            # 补全列为 0..q-1，缺失用 NaN（利于统一绘图/比较）
-            group_ret_by_day.columns = group_ret_by_day.columns.astype(int)
-            group_ret_by_day = group_ret_by_day.reindex(columns=list(range(q)))
+            # 使用原始 pandas 版本
+            def get_group_ret(g, q_bins):
+                if len(g) < q_bins:
+                    return pd.Series(dtype=float)
+                try:
+                    labels = pd.qcut(g["factor"], q_bins, labels=False, duplicates="drop")
+                except ValueError:
+                    return pd.Series(dtype=float)
+                return g["ret"].groupby(labels).mean()
+
+            # 结果：可能是 DataFrame(date x group)，也可能是 Series(date, group)
+            group_ret_stack = tmp_group.groupby(level="date").apply(lambda g: get_group_ret(g, q))
+
+            # ✅ 如果 apply 得到的是 Series（少见），才需要 unstack
+            if isinstance(group_ret_stack, pd.Series):
+                group_ret_by_day = group_ret_stack.unstack(level=-1).sort_index()
+            else:
+                # ✅ 常见情况：已经是 DataFrame
+                group_ret_by_day = group_ret_stack.sort_index()
+            
+            if not group_ret_by_day.empty:
+                # 补全列为 0..q-1，缺失用 NaN（利于统一绘图/比较）
+                group_ret_by_day.columns = group_ret_by_day.columns.astype(int)
+                all_cols = list(range(q))
+                group_ret_by_day = group_ret_by_day.reindex(columns=all_cols)
 
         if group_ret_by_day.empty:
             mean_group_ret = pd.Series(dtype=float)
@@ -399,14 +469,28 @@ class CommonFactorEvaluator(IEvaluator):
             ls_cumret = (1.0 + ls_series.fillna(0.0)).cumprod()
 
             # ---------- 3) 收益单调性 ----------
-            def _mono_one_day(row: pd.Series):
-                x = row.dropna()
-                if len(x) < 2:
-                    return np.nan
-                idx = x.index.astype(float)  # 组号
-                return st.spearmanr(idx, x.values).correlation
-
-            monotonic_series = group_ret_by_day.apply(_mono_one_day, axis=1).dropna()
+            if USE_NUMBA:
+                # 使用 numba 优化版本
+                def _mono_one_day(row: pd.Series):
+                    x = row.dropna()
+                    if len(x) < 2:
+                        return np.nan
+                    idx = x.index.astype(float).values  # 组号
+                    return compute_spearman_correlation(idx, x.values)
+                
+                monotonic_series = group_ret_by_day.apply(_mono_one_day, axis=1).dropna()
+            else:
+                # 使用原始 scipy 版本
+                def _mono_one_day(row: pd.Series):
+                    x = row.dropna()
+                    if len(x) < 2:
+                        return np.nan
+                    idx = x.index.astype(float)  # 组号
+                    corr_result = st.spearmanr(idx, x.values)
+                    return corr_result.correlation if hasattr(corr_result, 'correlation') else corr_result[0]
+                
+                monotonic_series = group_ret_by_day.apply(_mono_one_day, axis=1).dropna()
+            
             monotonic_mean = monotonic_series.mean()
 
         # ---------- 4) top 20% 换手 ----------

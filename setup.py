@@ -18,6 +18,7 @@ setup(
         "scipy>=1.7.0",
         "matplotlib>=3.4.0",
         "pyyaml>=5.4.0",
+        "numba>=0.56.0",
     ],
     extras_require={
         "notebook": ["ipywidgets>=7.6.0", "jupyter>=1.0.0"],
