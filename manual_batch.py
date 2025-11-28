@@ -1,5 +1,10 @@
 # 导入所有手动挖的因子
 import factors.manual  # noqa: F401
+# 注册自定义因子
+try:
+    import factors.manual_factors  # noqa: F401
+except ImportError:
+    pass
 
 from factor_engine import list_factors
 

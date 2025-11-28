@@ -92,20 +92,11 @@ pip install -e .
 ```python
 import FactorFramework
 
-# 获取因子库
+# 方式 1: 获取因子库实例（使用自定义配置）
 lib = FactorFramework.get_factor_library()
-```
 
-或者：
-
-```python
-from FactorFramework import (
-    get_factor_library,
-    register_factor,
-    FactorEngine,
-    LoacalDatasource,
-    EvaluatorEngine,
-)
+# 方式 2: 直接使用预初始化的因子库（推荐）
+lib = FactorFramework.factor_lib
 ```
 
 ### 2. 安装依赖
@@ -156,6 +147,18 @@ admission:
 ### 5. 开始挖因子
 
 打开 `analysis.ipynb` 开始交互式因子挖掘，或使用 `auto_batch.py` 进行批量处理。
+
+### 📝 因子注册快速指南
+
+**自动批量入库（带评价）**:
+1. 在 `factors/auto_factors/` 下创建 `.py` 文件，使用 `@register_factor` 定义因子
+2. 在 `factors/auto_factors/__init__.py` 中导入你的模块
+3. 运行 `python auto_batch.py` 自动评价并入库
+
+**手动批量入库（不评价）**:
+1. 在 `factors/manual_factors/` 下创建 `.py` 文件，使用 `@register_factor` 定义因子
+2. 在 `factors/manual_factors/__init__.py` 中导入你的模块
+3. 运行 `python manual_batch.py` 直接入库
 
 ---
 
@@ -306,12 +309,14 @@ interact(
 
 #### 步骤 1：定义候选因子
 
-在 `factors/auto.py` 中定义待评价的因子：
+**方法 A：在 `factors/auto_factors/` 目录中添加因子（推荐）**
+
+1. 在 `factors/auto_factors/` 目录下创建新的 Python 文件，例如 `my_factors.py`：
 
 ```python
+# factors/auto_factors/my_factors.py
 """
-自动挖掘的因子（待评价入库）
-所有在这里注册的因子会被 auto_batch.py 自动评价并判断是否入库
+我的自定义因子集合
 """
 
 import pandas as pd
@@ -347,8 +352,32 @@ def volatility_20d(df: pd.DataFrame) -> pd.Series:
             .pct_change()
             .rolling(20)
             .std())
+```
 
-# ... 添加更多因子
+2. 在 `factors/auto_factors/__init__.py` 中导入你的因子模块：
+
+```python
+# factors/auto_factors/__init__.py
+from . import my_factors  # noqa: F401
+```
+
+**方法 B：直接在 `factors/auto.py` 中添加因子**
+
+你也可以直接在 `factors/auto.py` 文件中定义因子（适合快速测试）：
+
+```python
+# factors/auto.py
+import pandas as pd
+from factor_engine import register_factor
+
+@register_factor(
+    name="my_test_factor",
+    required_fields=["close"],
+    version="v1"
+)
+def my_test_factor(df: pd.DataFrame) -> pd.Series:
+    """测试因子"""
+    return df.groupby(level="code")["close"].pct_change(20)
 ```
 
 #### 步骤 2：运行自动批量入库
@@ -395,14 +424,15 @@ python auto_batch.py --factors momentum_5d_v1 --force --horizons 5 10
 | `--factors` | str+ | `None` | 指定处理的因子名称列表 |
 
 **脚本工作流程**：
-1. 加载 hash 记录，对比因子代码是否变更
-2. 跳过未变更的因子（除非使用 `--force`）
-3. 加载 `factors/auto.py` 中定义的因子
-4. 计算每个因子的值
-5. 在多个持有期上评价因子表现
-6. 根据入库规则自动判断是否入库到 `auto_store`
-7. 更新 hash 记录并保存
-8. 输出详细的评价报告和统计信息
+1. 自动导入 `factors.auto_factors` 模块，触发因子注册
+2. 加载 hash 记录，对比因子代码是否变更
+3. 跳过未变更的因子（除非使用 `--force`）
+4. 从全局注册表中获取所有已注册但未入库的因子
+5. 计算每个因子的值
+6. 在多个持有期上评价因子表现
+7. 根据入库规则自动判断是否入库到 `auto_store`
+8. 更新 hash 记录并保存
+9. 输出详细的评价报告和统计信息
 
 **运行示例输出**：
 
@@ -601,16 +631,67 @@ print("✓ 因子已删除")
 
 ### 批量手动入库
 
-使用 `manual_batch.py` 批量将手动挖掘的因子入库：
+使用 `manual_batch.py` 批量将手动挖掘的因子入库到 `manual_store`（不检查评价指标）。
+
+#### 步骤 1：定义手动因子
+
+**方法 A：在 `factors/manual_factors/` 目录中添加因子（推荐）**
+
+1. 在 `factors/manual_factors/` 目录下创建新的 Python 文件，例如 `my_manual_factors.py`：
 
 ```python
-# 1. 在 factors/manual.py 中定义因子
-# 2. 运行批量入库脚本
+# factors/manual_factors/my_manual_factors.py
+"""
+我的手动精选因子
+"""
+
+import pandas as pd
+from factor_engine import register_factor
+
+@register_factor(
+    name="my_special_factor",
+    required_fields=["close", "volume"],
+    version="v1"
+)
+def my_special_factor(df: pd.DataFrame) -> pd.Series:
+    """我精心设计的特殊因子"""
+    return df.groupby(level="code")["close"].pct_change(20) * df["volume"]
 ```
+
+2. 在 `factors/manual_factors/__init__.py` 中导入你的因子模块：
+
+```python
+# factors/manual_factors/__init__.py
+from . import my_manual_factors  # noqa: F401
+```
+
+**方法 B：直接在 `factors/manual.py` 中添加因子**
+
+```python
+# factors/manual.py
+import pandas as pd
+from factor_engine import register_factor
+
+@register_factor(
+    name="my_manual_factor",
+    required_fields=["close"],
+    version="v1"
+)
+def my_manual_factor(df: pd.DataFrame) -> pd.Series:
+    """手动因子示例"""
+    return df.groupby(level="code")["close"].pct_change(10)
+```
+
+#### 步骤 2：运行批量入库脚本
 
 ```bash
 python manual_batch.py
 ```
+
+脚本会自动：
+1. 导入 `factors.manual_factors` 模块，触发因子注册
+2. 获取所有已注册但未入库的因子
+3. 直接入库到 `manual_store`（不进行评价检查）
 
 ---
 
@@ -983,17 +1064,19 @@ pip install -e .
 # 在你的项目代码中
 import FactorFramework
 
-# 获取因子库
+# 方式 1: 获取因子库实例
 lib = FactorFramework.get_factor_library()
 
-# 或导入具体模块
-from FactorFramework import (
-    get_factor_library,
-    register_factor,
-    FactorEngine,
-    LoacalDatasource,
-)
+# 方式 2: 使用预初始化的因子库（推荐）
+lib = FactorFramework.factor_lib
+
+# 使用因子库
+factor = lib.compute_factor(df, name="momentum_5d_v1")
 ```
+
+**注意**：
+- `get_factor_library()`: 每次调用默认会使用框架的 `config.yaml` 创建新实例，可以传入自定义配置
+- `factor_lib`: 框架初始化时创建的单例，推荐日常使用
 
 ---
 
@@ -1001,7 +1084,7 @@ from FactorFramework import (
 
 - **作者**：xb1002
 - **项目**：FactorFrameworkV2
-- **分支**：dev
+- **分支**：main
 
 欢迎提交 Issue 和 Pull Request！
 

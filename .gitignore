@@ -7,3 +7,5 @@ data/
 factor_store/
 *.egg-info/
 factor_hash_records.json
+factors/auto_factors/
+factors/manual_factors/

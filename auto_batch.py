@@ -20,6 +20,11 @@ from datetime import datetime
 
 # 导入所有 auto 因子
 import factors.auto  # noqa: F401
+# 注册自定义因子
+try:
+    import factors.auto_factors  # noqa: F401
+except ImportError:
+    pass
 
 from data_manager import LoacalDatasource
 from factor_engine import list_factors, FactorEngine, FactorSpec
